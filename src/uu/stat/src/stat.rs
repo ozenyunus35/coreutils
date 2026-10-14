@@ -953,7 +953,20 @@ impl Stater {
         while i < bound {
             match chars.get(i) {
                 Some('%') => match Self::handle_percent_case(&chars, &mut i, bound, format_str) {
-                    Ok(token) => tokens.push(token),
+                    Ok(token) => {
+                        // GNU reads the format byte by byte: a directive on a
+                        // multibyte character takes its first byte only (and
+                        // prints `?`), and the rest of the character follows.
+                        let rest = match &token {
+                            Token::Directive { format, .. } if !format.is_ascii() => {
+                                let mut buf = [0; 4];
+                                format.encode_utf8(&mut buf).as_bytes()[1..].to_vec()
+                            }
+                            _ => Vec::new(),
+                        };
+                        tokens.push(token);
+                        tokens.extend(rest.into_iter().map(Token::Byte));
+                    }
                     Err(error) => return (tokens, Some(error)),
                 },
                 Some('\\') => {
